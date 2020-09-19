@@ -38,7 +38,7 @@ The library is currently running in testnet. To migrate to mainnet, deploy smart
 [Free TON Atomic Swaps Dapp](https://github.com/ton-swaps/tonswapapp)
 
 ### Submission
-This remark was added for participation in [Free TON Contest: Atomic Swaps on Free TON [31 August 2020 - 20 September 2020]](https://forum.freeton.org/t/contest-atomic-swaps-on-free-ton-31-august-2020-20-september-2020/2508)
+This remark was added for participation in [Free TON Contest: Atomic Swaps on Free TON [31 August 2020 - 20 September 2020]](https://forum.freeton.org/t/contest-atomic-swaps-on-free-ton-31-august-2020-20-september-2020/2508/21)
 
 ### Author
 E-mail: sergeydobkin8@gmail.com
