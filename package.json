@@ -1,0 +1,37 @@
+{
+  "name": "tonswaplib",
+  "version": "0.0.1",
+  "description": "Atomic Swaps on Free TON",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "webpack-dev-server --config webpack.dev.js",
+    "build": "webpack --config webpack.prod.js",
+    "lint": "eslint ./src"
+  },
+  "keywords": [
+    "TON",
+    "Free TON",
+    "Atomic Swaps"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bignumber.js": "^9.0.0",
+    "bip32": "^2.0.5",
+    "bip39": "^3.0.2",
+    "bitcoinjs-lib": "^5.1.10",
+    "ethereum-input-data-decoder": "0.0.12",
+    "javascript-biginteger": "^0.9.2",
+    "superagent": "^6.1.0",
+    "ton-client-web-js": "^0.26.0",
+    "web3": "^1.2.11"
+  },
+  "devDependencies": {
+    "copy-webpack-plugin": "^6.1.0",
+    "eslint": "^7.9.0",
+    "webpack": "^4.42.1",
+    "webpack-cli": "^3.3.12",
+    "webpack-dev-server": "^3.11.0",
+    "webpack-merge": "^5.1.4"
+  }
+}
