@@ -60,6 +60,14 @@ class BtcSwap {
     return node.toWIF();
   }
 
+  getKeyPair(mnemonic) {
+    mnemonic = mnemonic || this.mnemonic;
+    const seed = bip39.mnemonicToSeedSync(mnemonic);
+    const node = bip32.fromSeed(seed, this.network);
+
+    return node;
+  }
+
   getScripValues(secretHash, ownerPublicKey, recipientPublicKey, lockTime) {
     const values = {
       secretHash: secretHash.replace('0x', ''),
@@ -81,7 +89,7 @@ class BtcSwap {
    * @public
    */
   async getTxFee({ inSatoshis, size, speed = 'fast', address } = {}) {
-    let estimatedFee = BigNumber(await this.estimateFeeValue({ inSatoshis, address, speed, method: 'swap' /*, txSize: size */}))
+    let estimatedFee = BigNumber(await this.estimateFeeValue({ inSatoshis, address, speed, method: 'swap', txSize: size}))
 
     this.feeValue = estimatedFee
 
@@ -140,6 +148,14 @@ class BtcSwap {
     })
   }
 
+  hexAlign(value, digits) {
+    value = value.replace('0x', '')
+    for (let i = digits - value.length; i > 0; i--) {
+      value = '0' + value
+    }
+    return value
+  }
+
   /**
    *
    * @param {object} data
@@ -151,13 +167,30 @@ class BtcSwap {
    */
   _signTransaction(data, inputIndex = 0) {
     debug('swap.core:swaps')('signing script input', inputIndex)
-    const { script, txRaw, secret } = data
+    let { script, txRaw, secret } = data
 
     const scriptData = this.bitcoin.payments.p2sh({ redeem: { output: script, network: this.network }, network: this.network })
 
     const hashType      = this.bitcoin.Transaction.SIGHASH_ALL
     const privKey = this.bitcoin.ECPair.fromWIF(this.getPrivateKey(), this.network)
+    console.log('privKey',privKey)
     const signatureHash = txRaw.hashForSignature(inputIndex, scriptData.redeem.output, hashType);
+    const sign = this.bitcoin.script.signature.encode(privKey.sign(signatureHash), hashType);
+
+    const PK = this.getPublicKey();
+    console.log('secret', secret, Buffer.from(secret.replace(/^0x/, ''), 'hex'))
+    console.log('getPublicKey', PK, Buffer.from(PK.replace(/^0x/, ''), 'hex'))
+    console.log('publickeybuffer', privKey.publicKey.toString('hex'))
+    console.log('sign', sign)
+
+    if (privKey.publicKey.length != 33) {
+      throw Error('invalid pubkey')
+    }
+    secret = this.hexAlign(secret, 64)
+    secret = Buffer.from(secret, 'hex')
+    if (secret.length != 32) {
+      throw Error('invalid secret length')
+    }
 
     const redeemScriptSig = this.bitcoin.payments.p2sh({ 
       network: this.network, 
@@ -165,9 +198,9 @@ class BtcSwap {
         network: this.network, 
         output: scriptData.redeem.output, 
         input: this.bitcoin.script.compile([ 
-          this.bitcoin.script.signature.encode(privKey.sign(signatureHash), hashType),
-          this.app.services.auth.accounts.btc.getPublicKeyBuffer(),
-          Buffer.from(secret.replace(/^0x/, ''), 'hex'),
+          sign,
+          privKey.publicKey,
+          secret,
         ]) 
       } 
     }).input 
@@ -188,10 +221,41 @@ class BtcSwap {
     const hashOpcodeName = `OP_${hashName.toUpperCase()}`
     const hashOpcode = this.bitcoin.opcodes[hashOpcodeName]
 
-    const { secretHash, ownerPublicKey, recipientPublicKey, lockTime } = data
+    let { secretHash, ownerPublicKey, recipientPublicKey, lockTime } = data
+
+    secretHash = this.hexAlign(secretHash, 64)
+    if (secretHash.length != 64) {
+      throw Error('invalid secretHash length')
+    }
+    recipientPublicKey = this.hexAlign(recipientPublicKey, 66)
+    ownerPublicKey = this.hexAlign(ownerPublicKey, 66)
 
     const script = this.bitcoin.script.compile([
+      
+      hashOpcode,
+      Buffer.from(secretHash, 'hex'),
+      this.bitcoin.opcodes.OP_EQUAL,
+      this.bitcoin.opcodes.OP_IF,
 
+        this.bitcoin.opcodes.OP_DUP,
+        Buffer.from(recipientPublicKey, 'hex'),
+        this.bitcoin.opcodes.OP_EQUALVERIFY,
+        this.bitcoin.opcodes.OP_CHECKSIG,
+
+      this.bitcoin.opcodes.OP_ELSE,
+
+        this.bitcoin.script.number.encode(lockTime),
+        this.bitcoin.opcodes.OP_CHECKLOCKTIMEVERIFY,
+        this.bitcoin.opcodes.OP_DROP,
+
+        this.bitcoin.opcodes.OP_DUP,
+        Buffer.from(ownerPublicKey, 'hex'),
+        this.bitcoin.opcodes.OP_EQUALVERIFY,
+        this.bitcoin.opcodes.OP_CHECKSIG,
+
+      this.bitcoin.opcodes.OP_ENDIF,
+
+      /*
       hashOpcode,
       Buffer.from(secretHash, 'hex'),
       this.bitcoin.opcodes.OP_EQUALVERIFY,
@@ -212,6 +276,7 @@ class BtcSwap {
       this.bitcoin.opcodes.OP_CHECKSIG,
 
       this.bitcoin.opcodes.OP_ENDIF,
+      */
     ])
 
     const scriptData = this.bitcoin.payments.p2sh({ redeem: { output: script, network: this.network }, network: this.network })
@@ -238,26 +303,16 @@ class BtcSwap {
     const { recipientPublicKey, lockTime } = data
     const { scriptAddress, script } = this.createScript(data, hashName)
 
-    const expectedConfidence = expected.confidence || 0.95
-    const unspents      = await this.fetchUnspents(scriptAddress)
-    const expectedValue = expected.value.multipliedBy(1e8).integerValue()
-    const totalUnspent  = unspents.reduce((summ, { satoshis }) => summ + satoshis, 0)
+    const amount = BigNumber(data.value)
 
-    const confidentUnspents = await this.filterConfidentUnspents(unspents, expectedConfidence)
-    const totalConfidentUnspent = confidentUnspents.reduce((summ, { satoshis }) => summ + satoshis, 0)
+    const unspents      = await this.fetchBalance(scriptAddress)
+    const expectedValue = amount.integerValue()
 
-    if (expectedValue.isGreaterThan(totalUnspent)) {
-      return `Expected script value: ${expectedValue.toNumber()}, got: ${totalUnspent}, address: ${scriptAddress}`
+    if (!expectedValue.isEqualTo(unspents)) {
+      console.log(`Expected script value: ${expectedValue.toNumber()}, got: ${unspents}, address: ${scriptAddress}`)
+      return false
     }
-    if (expected.lockTime > lockTime) {
-      return `Expected script lockTime: ${expected.lockTime}, got: ${lockTime}, address: ${scriptAddress}`
-    }
-    if (expected.recipientPublicKey !== recipientPublicKey) {
-      return `Expected script recipient publicKey: ${expected.recipientPublicKey}, got: ${recipientPublicKey}`
-    }
-    if (expectedValue.isGreaterThan(totalConfidentUnspent)) {
-      return `Expected script value: ${expectedValue.toString()} with confidence above ${expectedConfidence}, got: ${totalConfidentUnspent}, address: ${scriptAddress}`
-    }
+    return true
   }
 
   /**
@@ -265,46 +320,55 @@ class BtcSwap {
    * @param {object} data
    * @param {object} data.scriptValues
    * @param {BigNumber} data.amount
+   * @param {string} data.mnemonic
    * @param {function} handleTransactionHash
    * @param {string} hashName
    * @returns {Promise}
    */
   fundScript(data, handleTransactionHash, hashName) {
-    const { scriptValues, amount } = data
+    let { scriptValues, amount, mnemonic } = data
+    amount = BigNumber(amount)
 
     return new Promise(async (resolve, reject) => {
       try {
-        const { scriptAddress } = this.createScript(scriptValues, hashName)
+        const { script, scriptAddress } = this.createScript(scriptValues, hashName)
         const ownerAddress = this.getAddress()
 
         const tx            = new this.bitcoin.TransactionBuilder(this.network)
-        const unspents      = await this.fetchUnspents(ownerAddress)
-
-        const fundValue     = amount.multipliedBy(1e8).integerValue().toNumber()
-        const feeValueBN    = await this.getTxFee({ inSatoshis: true, address: ownerAddress })
-        const feeValue      = feeValueBN.integerValue().toNumber()
-        const totalUnspent  = unspents.reduce((summ, { satoshis }) => summ + satoshis, 0)
-        const skipValue     = totalUnspent - fundValue - feeValue
+        // const unspents      = await this.fetchUnspents(ownerAddress)
+        const fundValue     = amount.integerValue().toNumber()
+        const txSceleton = await this.btc.newTransaction(ownerAddress, scriptAddress, fundValue)
+        console.log('txSceleton', txSceleton)
+        // const feeValueBN    = await this.getTxFee({ inSatoshis: true, address: ownerAddress })
+        // const feeValue      = feeValueBN.integerValue().toNumber()
+        const feeValue      = txSceleton.tx.fees
+        // const totalUnspent  = unspents.reduce((summ, { satoshis }) => summ + satoshis, 0)
+        const totalUnspent  = txSceleton.tx.inputs.reduce((summ, { output_value }) => summ + output_value, 0)
+        // const skipValue     = totalUnspent - fundValue - feeValue
 
         if (totalUnspent < feeValue + fundValue) {
           throw new Error(`Total less than fee: ${totalUnspent} < ${feeValue} + ${fundValue}`)
         }
 
-        unspents.forEach(({ txid, vout }) => tx.addInput(txid, vout))
-        tx.addOutput(scriptAddress, fundValue)
-        tx.addOutput(this.getAddress(), skipValue)
+        // unspents.forEach(({ txid, vout }) => tx.addInput(txid, vout))
+        txSceleton.tx.inputs.forEach(({ prev_hash, output_index }) => tx.addInput(prev_hash, output_index))
+        txSceleton.tx.outputs.forEach(({ addresses, value }) => tx.addOutput(addresses[0], value))
+
+        // tx.addOutput(scriptAddress, fundValue)
+        // tx.addOutput(this.getAddress(), skipValue)
         tx.__INPUTS.forEach((input, index) => {
-          tx.sign(index, this.app.services.auth.accounts.btc)
+          tx.sign({prevOutScriptType:'p2pkh', vin: index, keyPair: this.getKeyPair(mnemonic)})
         })
 
         const txRaw = tx.buildIncomplete()
+        console.log('txRaw', txRaw, txRaw.getId(), txRaw.toHex())
 
         if (typeof handleTransactionHash === 'function') {
           handleTransactionHash(txRaw.getId())
         }
 
         try {
-          const result = true;//await this.broadcastTx(txRaw.toHex())
+          const result = await this.broadcastTx(txRaw.toHex())
 
           resolve(result)
         }
@@ -338,10 +402,10 @@ class BtcSwap {
       throw new Error('Wrong data type')
     }
 
-    const unspents      = await this.fetchUnspents(address)
-    const totalUnspent  = unspents && unspents.length && unspents.reduce((summ, { satoshis }) => summ + satoshis, 0) || 0
+    //const unspents      = await this.fetchUnspents(address)
+    //const totalUnspent  = unspents && unspents.length && unspents.reduce((summ, { value }) => summ + value, 0) || 0
 
-    return totalUnspent
+    return await this.btc.fetchBalance(address)
   }
 
     /**
@@ -356,7 +420,8 @@ class BtcSwap {
       address = data
     }
     else if (typeof data === 'object') {
-      const { scriptAddress } = this.createScript(data, hashName)
+      const { script, scriptAddress } = this.createScript(data, hashName)
+      console.log('script', script.toString('hex'))
 
       address = scriptAddress
     }
@@ -364,10 +429,22 @@ class BtcSwap {
       throw new Error('Wrong data type')
     }
 
-    const unspents      = await this.fetchUnspents(address)
-    const totalUnspent  = unspents && unspents.length && unspents.reduce((summ, { satoshis }) => summ + satoshis, 0) || 0
+    const info = await this.btc.fetchTxs(address)
+    if (info.length > 0 && info[0].spentTxid.length !== 0) {
+      const tx = await this.btc.fetchTxExt(info[0].spentTxid)
+      if (tx.inputs.length < 1) {
+        return
+      }
+      const script = tx.inputs[0].script
+      // 1 (size) + n (sign) + 1 (size) + 33 (pk) + 1 (size) = 108
+      const signLength = parseInt(script.slice(0, 2), 16)
+      const secretPos = 1 + signLength + 1 + 33 + 1
+      const secret = script.slice(secretPos*2, (secretPos+32)*2)
+      console.log('tx', tx, secret)
+      return secret
+    }
 
-    return totalUnspent
+    return
   }
 
   /**
@@ -383,39 +460,30 @@ class BtcSwap {
     const destAddress = (destinationAddress) ? destinationAddress : this.getAddress()
 
     const { script, scriptAddress } = this.createScript(scriptValues, hashName)
+    console.log('scriptAddress', scriptAddress, 'script', script)
 
     const tx            = new this.bitcoin.TransactionBuilder(this.network)
-    const unspents      = await this.fetchUnspents(scriptAddress)
+    const balance      = await this.fetchBalance(scriptAddress)
+    const unspents = await this.fetchUnspents(scriptAddress)
+    console.log('unspents', unspents, balance)
 
-    const feeValueBN    = await this.getTxFee({ inSatoshis: true, address: scriptAddress })
+    const feeValueBN    = await this.getTxFee({ inSatoshis: true, size: 348, address: scriptAddress })
     const feeValue      = feeValueBN.integerValue().toNumber()
-    const totalUnspent  = unspents.reduce((summ, { satoshis }) => summ + satoshis, 0)
+    console.log('feeValue', feeValue)
 
-    if (BigNumber(totalUnspent).isLessThan(feeValue)) {
-      /* Check - may be withdrawed */
-      if (typeof this.checkWithdraw === 'function') {
-        const hasWithdraw = await this.checkWithdraw(scriptAddress)
-        if (hasWithdraw
-          && hasWithdraw.address.toLowerCase() == destAddress.toLowerCase()
-        ) {
-          // already withdrawed
-          return {
-            txId: hasWithdraw.txid,
-            alreadyWithdrawed: true
-          }
-        } else {
-          throw new Error(`Total less than fee: ${totalUnspent} < ${feeValue}`)
-        }
-      } else {
-        throw new Error(`Total less than fee: ${totalUnspent} < ${feeValue}`)
-      }
+    const totalUnspent  = unspents.reduce((summ, { value }) => summ + value, 0)
+    console.log('totalUnspent', totalUnspent, feeValue, totalUnspent - feeValue)
+
+    if (BigNumber(totalUnspent).isLessThan(feeValue) || BigNumber(totalUnspent).isEqualTo(feeValue)) {
+      throw new Error(`Total less than fee: ${totalUnspent} <= ${feeValue}`)
     }
 
     if (isRefund) {
       tx.setLockTime(scriptValues.lockTime)
     }
 
-    unspents.forEach(({ txid, vout }) => tx.addInput(txid, vout, 0xfffffffe))
+    unspents.forEach(({ mintTxid, mintIndex }) => { console.log('addInput', mintTxid, mintIndex); tx.addInput(mintTxid, mintIndex, 0xfffffffe); })
+    console.log('destAddress', destAddress)
     tx.addOutput(destAddress, totalUnspent - feeValue)
 
     const txRaw = tx.buildIncomplete()
@@ -430,6 +498,7 @@ class BtcSwap {
 
     const txHex = txRaw.toHex()
     const txId = txRaw.getId()
+    console.log('txId', txId, 'txHex', txHex)
 
     return {
       txHex,
@@ -486,24 +555,28 @@ class BtcSwap {
    * @param {string} hashName
    * @returns {Promise}
    */
-  withdraw(data, isRefund, hashName) {
+  withdraw(data, isRefund, handleTransactionHash, hashName) {
     return new Promise(async (resolve, reject) => {
       try {
         const txRaw = await this.getWithdrawRawTransaction(data, isRefund, hashName)
 
-        if (txRaw.alreadyWithdrawed) {
-          resolve(txRaw.txId)
-          return
+        if (typeof handleTransactionHash === 'function') {
+          handleTransactionHash(txRaw.txId)
         }
-
-        debug('swap.core:swaps')('raw tx withdraw', txRaw.txHex)
 
         const result = await this.broadcastTx(txRaw.txHex)
 
         // Wait some delay until transaction can be rejected or broadcast failed
         await new Promise(resolve => setTimeout(resolve, 10000))
 
-        const txSuccess = await this.checkTX(txRaw.txId)
+        let txSuccess;
+        for (let i = 0; i < 30; i++) {
+          txSuccess = await this.checkTX(txRaw.txId)
+          if (txSuccess)
+            break
+
+          await new Promise(resolve => setTimeout(resolve, 10000))
+        }
 
         if (txSuccess) {
           resolve(txRaw.txId)
@@ -511,6 +584,7 @@ class BtcSwap {
           console.warn('BtcSwap: cant withdraw', 'Generated TX not found')
           reject('TX not found. Try it later. ',txRaw.txId)
         }
+
       }
       catch (error) {
         console.warn('BtcSwap: cant withdraw', error.message)
@@ -540,14 +614,19 @@ class BtcSwap {
    * @returns {Promise}
    */
   async checkTX(txID) {
-    const txInfo = await this.fetchTxInfo(txID)
-    if (txInfo
-      && txInfo.senderAddress
-      && txInfo.txid
-      && (txInfo.txid.toLowerCase() == txID.toLowerCase())
-    ) {
-      return true
+    try {
+      const txInfo = await this.btc.fetchTxExt(txID)
+      console.log('checkTX', txInfo)
+      if (txInfo
+        && txInfo.hash
+        && (txInfo.hash.toLowerCase() == txID.toLowerCase())
+      ) {
+        return true
+      }
+    } catch (e) {
+      console.log('checkTX failed, maybe tx not found')
     }
+
     return false
   }
   /**
@@ -559,8 +638,8 @@ class BtcSwap {
    * @param {string} hashName
    * @returns {Promise}
    */
-  refund(data, hashName) {
-    return this.withdraw(data, true, hashName)
+  refund(data, handleTransactionHash, hashName) {
+    return this.withdraw(data, true, handleTransactionHash, hashName)
   }
 }
 

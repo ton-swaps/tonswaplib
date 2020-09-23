@@ -27,6 +27,7 @@ The build result will be in the folder ./dist
 npm run test
 ```
 Open with browser http://127.0.0.1:8001/test-orderbook.html
+
 Open javascript console, wait for test completion
 
 ### Mainnet
@@ -34,7 +35,9 @@ The library is currently running in testnet. To migrate to mainnet, deploy smart
 
 ### Related projects
 [Ethereum Atomic Swaps smart contracts](https://github.com/ton-swaps/ethswap)
+
 [Free TON Atomic Swaps smart contracts](https://github.com/ton-swaps/tonswapsmc)
+
 [Free TON Atomic Swaps Dapp](https://github.com/ton-swaps/tonswapapp)
 
 ### Submission

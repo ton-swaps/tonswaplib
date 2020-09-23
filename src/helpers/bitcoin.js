@@ -8,8 +8,8 @@ const debug = require('../debug')
 const BITPAY = `https://api.bitcore.io/api/BTC/testnet`
 const BITPAY_MAIN = `https://insight.bitpay.com/api`
 
-const BLOCKCYPHER_API = `https://api.blockcypher.com/v1/btc/main/`
-const BLOCKCYPHER_API_TESTNET = `https://api.blockcypher.com/v1/btc/test3/`
+const BLOCKCYPHER_API = `https://api.blockcypher.com/v1/btc/main`
+const BLOCKCYPHER_API_TESTNET = `https://api.blockcypher.com/v1/btc/test3`
 const EARN_COM = `https://bitcoinfees.earn.com/api/v1/fees/recommended`
 // const BLOCKCYPHER_API_TOKEN = process.env.BLOCKCYPHER_API_TOKEN
 
@@ -132,15 +132,38 @@ class Bitcoin {
 
     // 10 minuts cache
     // query request
+    /*
     return request
       .get(`${API_ROOT}`, {
         cacheResponse: 10*60*1000,
         queryResponse: true,
         cacheOnFail: true,
       } )
-      .then(json => JSON.parse(json))
+      .then(json => json)
       .then(info => Number(info[_speed]))
       .catch(error => filterError(error))
+      */
+    return request
+      .get(`${API_ROOT}`)
+      .then(info => Number(info[_speed]))
+      .catch(error => filterError(error))
+  }
+
+  newTransaction(srcAddress, dstAddress, value, script) {
+    var newtx = {
+      "inputs": [{"addresses": [srcAddress]}],
+      "outputs": [{"addresses": [dstAddress], "value": value, "script": script}],
+      "preference": "high"
+    }
+
+    const API_ROOT = this.network === 'testnet'
+      ? BLOCKCYPHER_API_TESTNET
+      : BLOCKCYPHER_API
+    console.log('post request:', newtx)
+    return request.post(`${API_ROOT}/txs/new`, {
+      json: true,
+      body: JSON.stringify(newtx),
+    })
   }
 
   fetchBalance(address) {
@@ -152,10 +175,22 @@ class Bitcoin {
         queryResponse: true,
       }
     ).then(( json ) => {
-      const balance = JSON.parse(json).confirmed
-      debug('swap.core:bitcoin')('BTC Balance:', balance)
-
+      const balance = json.confirmed
       return balance
+    })
+    .catch(error => filterError(error))
+  }
+
+  fetchTxs(address) {
+    // 10 seconds cache
+    // query requests
+    return request.get(`${this.root}/address/${address}/txs`,
+      {
+        cacheResponse: 10*1000,
+        queryResponse: true,
+      }
+    ).then(( json ) => {
+      return json
     })
     .catch(error => filterError(error))
   }
@@ -175,10 +210,13 @@ class Bitcoin {
   }
 
   broadcastTx(txRaw) {
-    return request.post(`${this.root}/tx/send`, {
+    const API_ROOT = this.network === 'testnet'
+      ? BLOCKCYPHER_API_TESTNET
+      : BLOCKCYPHER_API
+    return request.post(`${API_ROOT}/txs/push`, {
       json: true,
       body: {
-        rawtx: txRaw,
+        tx: txRaw,
       },
     })
     .catch(error => filterError(error))
@@ -192,9 +230,9 @@ class Bitcoin {
         cacheResponse: 10*1000,
         queryResponse: true,
       } )
-      .then(json => JSON.parse(json))
-      .then(({ fees, ...rest }) => ({
-        fees: BigNumber(fees).multipliedBy(1e8),
+      .then(json => { console.log(json); return json;})
+      .then(({ fee, ...rest }) => ({
+        fees: BigNumber(fee).multipliedBy(1e8),
         ...rest,
       }))
       .catch(error => {
@@ -205,11 +243,17 @@ class Bitcoin {
 
   fetchTxInfo(hash) {
     return this.fetchTx(hash)
-      .then(({ vin, ...rest }) => ({
-        senderAddress: vin[0].addr,
-        ...rest,
-      }))
-      .catch((error) => error)
+  }
+
+  fetchTxExt(hash) {
+    const API_ROOT = this.network === 'testnet'
+      ? BLOCKCYPHER_API_TESTNET
+      : BLOCKCYPHER_API
+
+    return request
+      .get(`${API_ROOT}/txs/${hash}`, {})
+      .then(json => json)
+      .catch(error => filterError(error))
   }
 
   fetchOmniBalance(address, assetId = 31) {
@@ -316,6 +360,8 @@ class Bitcoin {
 
     return result
   }
+
+
 }
 
 module.exports = new Bitcoin()
