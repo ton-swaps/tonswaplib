@@ -54,7 +54,7 @@ const TonSwapOrderbookAbi = {
 				{"name":"exchangeRate","type":"uint256"},
 				{"name":"timeLockSlot","type":"uint32"},
 				{"name":"secretHash","type":"uint256"},
-				{"name":"initiatorTargetAddress","type":"uint256"}
+				{"name":"initiatorTargetAddress","type":"bytes[]"}
 			],
 			"outputs": [
 			]
@@ -73,7 +73,7 @@ const TonSwapOrderbookAbi = {
 				{"name":"dbId","type":"uint32"},
 				{"name":"value","type":"uint256"},
 				{"name":"initiatorAddress","type":"address"},
-				{"name":"confirmatorSourceAddress","type":"uint256"}
+				{"name":"confirmatorSourceAddress","type":"bytes[]"}
 			],
 			"outputs": [
 			]
@@ -105,7 +105,7 @@ const TonSwapOrderbookAbi = {
 				{"name":"minValue","type":"uint256"},
 				{"name":"exchangeRate","type":"uint256"},
 				{"name":"timeLockSlot","type":"uint32"},
-				{"name":"initiatorSourceAddress","type":"uint256"}
+				{"name":"initiatorSourceAddress","type":"bytes[]"}
 			],
 			"outputs": [
 			]
@@ -124,7 +124,7 @@ const TonSwapOrderbookAbi = {
 				{"name":"dbId","type":"uint32"},
 				{"name":"value","type":"uint256"},
 				{"name":"initiatorAddress","type":"address"},
-				{"name":"confirmatorTargetAddress","type":"uint256"},
+				{"name":"confirmatorTargetAddress","type":"bytes[]"},
 				{"name":"secretHash","type":"uint256"}
 			],
 			"outputs": [
@@ -184,7 +184,7 @@ const TonSwapOrderbookAbi = {
 				{"name":"initiatorAddress","type":"address"}
 			],
 			"outputs": [
-				{"components":[{"name":"confirmed","type":"bool"},{"name":"confirmTime","type":"uint32"},{"name":"value","type":"uint256"},{"name":"minValue","type":"uint256"},{"name":"exchangeRate","type":"uint256"},{"name":"timeLockSlot","type":"uint32"},{"name":"secretHash","type":"uint256"},{"name":"initiatorTargetAddress","type":"uint256"},{"name":"confirmatorTargetAddress","type":"address"},{"name":"confirmatorSourceAddress","type":"uint256"}],"name":"order","type":"tuple"}
+				{"components":[{"name":"confirmed","type":"bool"},{"name":"confirmTime","type":"uint32"},{"name":"value","type":"uint256"},{"name":"minValue","type":"uint256"},{"name":"exchangeRate","type":"uint256"},{"name":"timeLockSlot","type":"uint32"},{"name":"secretHash","type":"uint256"},{"name":"initiatorTargetAddress","type":"bytes[]"},{"name":"confirmatorTargetAddress","type":"address"},{"name":"confirmatorSourceAddress","type":"bytes[]"}],"name":"order","type":"tuple"}
 			]
 		},
 		{
@@ -194,7 +194,7 @@ const TonSwapOrderbookAbi = {
 				{"name":"initiatorAddress","type":"address"}
 			],
 			"outputs": [
-				{"components":[{"name":"confirmed","type":"bool"},{"name":"confirmTime","type":"uint32"},{"name":"foreignValue","type":"uint256"},{"name":"foreignMinValue","type":"uint256"},{"name":"exchangeRate","type":"uint256"},{"name":"timeLockSlot","type":"uint32"},{"name":"initiatorSourceAddress","type":"uint256"},{"name":"value","type":"uint256"},{"name":"confirmatorSourceAddress","type":"address"},{"name":"confirmatorTargetAddress","type":"uint256"},{"name":"secretHash","type":"uint256"}],"name":"order","type":"tuple"}
+				{"components":[{"name":"confirmed","type":"bool"},{"name":"confirmTime","type":"uint32"},{"name":"foreignValue","type":"uint256"},{"name":"foreignMinValue","type":"uint256"},{"name":"exchangeRate","type":"uint256"},{"name":"timeLockSlot","type":"uint32"},{"name":"initiatorSourceAddress","type":"bytes[]"},{"name":"value","type":"uint256"},{"name":"confirmatorSourceAddress","type":"address"},{"name":"confirmatorTargetAddress","type":"bytes[]"},{"name":"secretHash","type":"uint256"}],"name":"order","type":"tuple"}
 			]
 		},
 		{

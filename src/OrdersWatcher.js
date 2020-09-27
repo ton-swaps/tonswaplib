@@ -54,7 +54,7 @@ class OrderWather {
     if (swapDirect && toToken === 'BTC') {
       const initiatorBtc = new this.orderbook.swappers.BTC.BtcSwapInitiator(undefined, undefined, initiatorAltAddress)
       initiatorAltAddress = initiatorBtc.swap.getPublicKey(initiatorAltAddress)
-      throw Error('Sorry, Bitcoin support coming soon')
+      // throw Error('Sorry, Bitcoin support coming soon')
     }
 
     try {
@@ -87,7 +87,7 @@ class OrderWather {
     if (order.direct && order.toToken === 'BTC') {
       const initiatorBtc = new this.orderbook.swappers.BTC.BtcSwapInitiator(undefined, undefined, recipientAltAddress)
       recipientAltAddress = initiatorBtc.swap.getPublicKey(recipientAltAddress)
-      throw Error('Sorry, Bitcoin support coming soon')
+      // throw Error('Sorry, Bitcoin support coming soon')
     }
 
     try {
@@ -348,6 +348,8 @@ class OrderWather {
         'secretHash', secretHash, 'until', timeLockUntil) 
 
       if (altToken === 'ETH') {
+        sourceAddr = '0x' + this.orderbook.hexAlign(BigInteger(sourceAddr, 16).toString(16), 40)
+        dstAddress = '0x' + this.orderbook.hexAlign(BigInteger(dstAddress, 16).toString(16), 40)
         if (this.receiverEth === undefined) {
           this.receiverEth = new this.orderbook.swappers.ETH.EthSwapReceiver(sourceAddr, dstAddress, this.state.secret, secretHash)
         }
@@ -386,7 +388,8 @@ class OrderWather {
         this.state.status = 'return'
         return true
       } else if (altToken === 'USDT') {
-
+        sourceAddr = '0x' + this.orderbook.hexAlign(BigInteger(sourceAddr, 16).toString(16), 40)
+        dstAddress = '0x' + this.orderbook.hexAlign(BigInteger(dstAddress, 16).toString(16), 40)
         if (this.receiverEth === undefined) {
           this.receiverEth = new this.orderbook.swappers.USDT.EthTokenSwapReceiver('USDT', sourceAddr, dstAddress, this.state.secret, secretHash)
         }
@@ -411,7 +414,6 @@ class OrderWather {
         targetWallet: "0xe5f178488DB8a528915aBA104aBaad69977Ce3b6"
         token: "0x5070C3eD94bF90868aF26b84cc6876a4137D9ECF"
         */
-
         if (BigInteger(dstAddress).compare(targetWallet) !== 0) {
           console.log('invalid dstAddress, got', targetWallet, 'expected', dstAddress)
           return false
@@ -435,6 +437,33 @@ class OrderWather {
         }
 
         this.state.altFinishTxId = await this.receiverEth.withdraw()
+        this.state.altFinishTxTm = Math.floor(Date.now() / 1000)
+        this.state.status = 'return'
+        return true
+      } else if (altToken === 'BTC') {
+        sourceAddr = '0x' + this.orderbook.hexAlign(sourceAddr, 66)
+        dstAddress = '0x' + this.orderbook.hexAlign(dstAddress, 66)
+        if (this.receiverBtc === undefined) {
+          this.receiverBtc = new this.orderbook.swappers.BTC.BtcSwapReceiver(sourceAddr, dstAddress, this.state.altAddress, this.state.secret, secretHash)
+        }
+        const res = await this.receiverBtc.getSwap(BigInteger(altValue).toJSValue(), this.state.altWithdrawUntil)
+
+        if (res) {
+          console.log('btc swap contract not found')
+          return false
+        }
+
+        let withdrawTx;
+        try {
+          withdrawTx = await this.receiverBtc.withdraw(BigInteger(altValue).toJSValue(), this.state.altWithdrawUntil, this.state.secret)
+        } catch (e) {
+          console.log('withdraw error:', e)
+        }
+        if (!withdrawTx) {
+          return false
+        }
+
+        this.state.altFinishTxId = withdrawTx
         this.state.altFinishTxTm = Math.floor(Date.now() / 1000)
         this.state.status = 'return'
         return true
@@ -487,6 +516,8 @@ class OrderWather {
         secretHash, 'srcAddress', sourceAddr, 'dstAddress', dstAddress, 'altValue', altValue, 'until', timeLockUntil) 
       
       if (altToken === 'ETH') {
+        sourceAddr = '0x' + this.orderbook.hexAlign(BigInteger(sourceAddr, 16).toString(16), 40)
+        dstAddress = '0x' + this.orderbook.hexAlign(BigInteger(dstAddress, 16).toString(16), 40)
         if (this.initiatorEth === undefined) {
           this.initiatorEth = new this.orderbook.swappers.ETH.EthSwapInitiator(sourceAddr, dstAddress, secretHash)
         }
@@ -496,6 +527,8 @@ class OrderWather {
         this.state.status = 'waitsecret'
         return true
       } else if (altToken === 'USDT') {
+        sourceAddr = '0x' + this.orderbook.hexAlign(BigInteger(sourceAddr, 16).toString(16), 40)
+        dstAddress = '0x' + this.orderbook.hexAlign(BigInteger(dstAddress, 16).toString(16), 40)
         if (this.initiatorEth === undefined) {
           this.initiatorEth = new this.orderbook.swappers.USDT.EthTokenSwapInitiator('USDT', sourceAddr, dstAddress, secretHash)
         }
@@ -516,11 +549,24 @@ class OrderWather {
         this.state.status = 'waitsecret'
         return true
       } else if (altToken === 'BTC') {
+        sourceAddr = '0x' + this.orderbook.hexAlign(sourceAddr, 66)
+        dstAddress = '0x' + this.orderbook.hexAlign(dstAddress, 66)
         if (this.initiatorBtc === undefined) {
-          this.initiatorBtc = new this.orderbook.swappers.BTC.BtcSwapInitiator(sourceAddr, dstAddress, this.state.altAddress, this.state.secret, secretHash)
+          this.initiatorBtc = new this.orderbook.swappers.BTC.BtcSwapInitiator(sourceAddr, dstAddress, this.state.altAddress, secretHash)
         }
-        this.state.altTxId = await this.initiatorBtc.create(altValue)
+        this.state.altTxId = await this.initiatorBtc.create(BigInteger(altValue).toJSValue(), this.state.altWithdrawUntil)
         this.state.altTxTm = Math.floor(Date.now() / 1000)
+
+        for (let i = 0; i < 10; i++) {
+          console.log('check swap tx')
+          const res = await his.initiatorBtc.checkTX(this.state.altTxId)
+          if (res) {
+            console.log('found swap tx')
+            break
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 10000))
+        }
 
         this.state.status = 'waitsecret'
         return true
@@ -569,6 +615,8 @@ class OrderWather {
         'secretHash', secretHash)
 
       if (altToken === 'ETH') {
+        sourceAddr = '0x' + this.orderbook.hexAlign(BigInteger(sourceAddr, 16).toString(16), 40)
+        dstAddress = '0x' + this.orderbook.hexAlign(BigInteger(dstAddress, 16).toString(16), 40)
         if (this.initiatorEth === undefined) {
           this.initiatorEth = new this.orderbook.swappers.ETH.EthSwapInitiator(sourceAddr, dstAddress, secretHash)
         }
@@ -589,6 +637,8 @@ class OrderWather {
         this.state.status = 'withdrawTon'
         return true
       } else if (altToken === 'USDT') {
+        sourceAddr = '0x' + this.orderbook.hexAlign(BigInteger(sourceAddr, 16).toString(16), 40)
+        dstAddress = '0x' + this.orderbook.hexAlign(BigInteger(dstAddress, 16).toString(16), 40)
         if (this.initiatorEth === undefined) {
           this.initiatorEth = new this.orderbook.swappers.USDT.EthTokenSwapInitiator('USDT', sourceAddr, dstAddress, secretHash)
         }
@@ -609,15 +659,23 @@ class OrderWather {
         this.state.status = 'withdrawTon'
         return true
       } else if (altToken === 'BTC') {
+        sourceAddr = '0x' + this.orderbook.hexAlign(sourceAddr, 66)
+        dstAddress = '0x' + this.orderbook.hexAlign(dstAddress, 66)
         if (this.initiatorEth === undefined) {
-          this.initiatorBtc = new this.orderbook.swappers.BTC.BtcSwapInitiator(sourceAddr, dstAddress, this.state.altAddress, this.state.secret, secretHash)
+          this.initiatorBtc = new this.orderbook.swappers.BTC.BtcSwapInitiator(sourceAddr, dstAddress, this.state.altAddress, secretHash)
         }
 
-        const res = await this.initiatorEth.getSwap()
-        if (res === undefined) {
+        let extractedSecret;
+        try {
+          extractedSecret = await this.initiatorBtc.getSwap(this.state.altWithdrawUntil)
+        } catch (e) {
+          console.log('getsecret error:', e)
+        }
+
+        if (extractedSecret === undefined) {
           return false
         }
-        const secret = res.secret
+        const secret = extractedSecret
 
         // "0x0000000000000000000000000000000000000000000000000000000000000000"
 
@@ -647,6 +705,11 @@ class OrderWather {
     
     const altToken = this.state.order.direct ? this.state.order.toToken : this.state.order.fromToken
 
+    const altValue = await this.orderbook.getAltValue(this.state.order.value, this.state.order.exchangeRate)
+    if (altValue === undefined) {
+      this.state.status = 'failed'
+      return true
+    }
     const secretHash = this.state.order.secretHash
 
     let sourceAddr
@@ -666,6 +729,8 @@ class OrderWather {
         'secretHash', secretHash, 'lockUntil', this.state.altWithdrawUntil, 'now', tm)
 
         if (altToken === 'ETH') {
+          sourceAddr = '0x' + this.orderbook.hexAlign(BigInteger(sourceAddr, 16).toString(16), 40)
+          dstAddress = '0x' + this.orderbook.hexAlign(BigInteger(dstAddress, 16).toString(16), 40)
           if (this.initiatorEth === undefined) {
             this.initiatorEth = new this.orderbook.swappers.ETH.EthSwapInitiator(sourceAddr, dstAddress, secretHash)
           }
@@ -678,6 +743,8 @@ class OrderWather {
             return true
           }
         } else if (altToken === 'USDT') {
+          sourceAddr = '0x' + this.orderbook.hexAlign(BigInteger(sourceAddr, 16).toString(16), 40)
+          dstAddress = '0x' + this.orderbook.hexAlign(BigInteger(dstAddress, 16).toString(16), 40)
           if (this.initiatorEth === undefined) {
             this.initiatorEth = new this.orderbook.swappers.USDT.EthTokenSwapInitiator('USDT', sourceAddr, dstAddress, secretHash)
           }
@@ -688,9 +755,23 @@ class OrderWather {
             this.state.altFinishTxTm = Math.floor(Date.now() / 1000)
             return true
           }
+        } else if (altToken === 'BTC') {
+          sourceAddr = '0x' + this.orderbook.hexAlign(sourceAddr, 66)
+          dstAddress = '0x' + this.orderbook.hexAlign(dstAddress, 66)
+          if (this.initiatorEth === undefined) {
+            this.initiatorBtc = new this.orderbook.swappers.BTC.BtcSwapInitiator(sourceAddr, dstAddress, this.state.altAddress, secretHash)
+          }
+          const tx = await this.initiatorBtc.withdrawWithTimeout(BigInteger(altValue).toJSValue(), this.state.altWithdrawUntil)
+
+          if (tx !== undefined) {
+            this.state.altFinishTxId = tx
+            this.state.altFinishTxTm = Math.floor(Date.now() / 1000)
+            return true
+          }
         }
 
         return false
+
       } catch (e) {
         console.log('withdrawAltTimeout error:', e)
       }

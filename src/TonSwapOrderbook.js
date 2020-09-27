@@ -296,6 +296,8 @@ class TonSwapOrderbook {
     res.order.fromToken = this.directTable[swapId][0]
     res.order.toToken = this.directTable[swapId][1]
     res.order.secretHash = '0x' + this.hexAlign(res.order.secretHash, 64)
+    res.order.initiatorTargetAddress = '0x' + this.hexAlign(res.order.initiatorTargetAddress, 66)
+    res.order.confirmatorSourceAddress = '0x' + this.hexAlign(res.order.confirmatorSourceAddress, 66)
     return res.order
   }
 
@@ -319,6 +321,8 @@ class TonSwapOrderbook {
     res.order.fromToken = this.reversedTable[swapId][0]
     res.order.toToken = this.reversedTable[swapId][1]
     res.order.secretHash = '0x' + this.hexAlign(res.order.secretHash, 64)
+    res.order.initiatorSourceAddress = '0x' + this.hexAlign(res.order.initiatorSourceAddress, 66)
+    res.order.confirmatorTargetAddress = '0x' + this.hexAlign(res.order.confirmatorTargetAddress, 66)
     return res.order
   }
 
@@ -399,6 +403,7 @@ class TonSwapOrderbook {
       let minValue = BigInteger(minAmount)
       let exchangeRate = BigInteger(rate)
       let secretHash = '0x' + this.hexAlign(await this.sha256(secret), 64)
+      let initiatorTargetAddress = this.hexAlign(initiatorAltAddress, 66)
 
       return await this._runSmcMethod(this.TRANSACTION_VALUE,
                             'createDirectOrder',
@@ -409,7 +414,7 @@ class TonSwapOrderbook {
 				                      exchangeRate: '0x' + exchangeRate.toString(16),
 				                      timeLockSlot: lockTime,
 				                      secretHash: secretHash,
-				                      initiatorTargetAddress: initiatorAltAddress
+				                      initiatorTargetAddress: initiatorTargetAddress
                             })
 
     } else {
@@ -417,6 +422,7 @@ class TonSwapOrderbook {
       let value = BigInteger(amount)
       let minValue = BigInteger(minAmount)
       let exchangeRate = BigInteger(rate)
+      let initiatorSourceAddress = this.hexAlign(initiatorAltAddress, 66)
 
       return await this._runSmcMethod(this.TRANSACTION_VALUE,
                             'createReversedOrder',
@@ -426,7 +432,7 @@ class TonSwapOrderbook {
 				                      minValue: '0x' + minValue.toString(16),
 				                      exchangeRate: '0x' + exchangeRate.toString(16),
 				                      timeLockSlot: lockTime,
-				                      initiatorSourceAddress: initiatorAltAddress
+				                      initiatorSourceAddress: initiatorSourceAddress
                             })
     }
 
@@ -472,6 +478,7 @@ class TonSwapOrderbook {
     if (order.direct) {
 
       let value = BigInteger(amount)
+      let confirmatorSourceAddress = this.hexAlign(recipientAltAddress, 66)
 
       return await this._runSmcMethod(this.TRANSACTION_VALUE,
                             'confirmDirectOrder',
@@ -479,12 +486,13 @@ class TonSwapOrderbook {
                               dbId: order.swapId,
 				                      value: '0x' + value.toString(16),
 				                      initiatorAddress: order.id,
-				                      confirmatorSourceAddress: recipientAltAddress
+				                      confirmatorSourceAddress: confirmatorSourceAddress
                             })
     } else {
 
       let value = BigInteger(amount)
       let secretHash = '0x' + this.hexAlign(await this.sha256(secret), 64)
+      let confirmatorTargetAddress = this.hexAlign(recipientAltAddress, 66)
 
       return await this._runSmcMethod(this.TRANSACTION_VALUE,
                             'confirmReversedOrder',
@@ -492,7 +500,7 @@ class TonSwapOrderbook {
                               dbId: order.swapId,
 				                      value: '0x' + value.toString(16),
 				                      initiatorAddress: order.id,
-                              confirmatorTargetAddress: recipientAltAddress,
+                              confirmatorTargetAddress: confirmatorTargetAddress,
                               secretHash: secretHash
                             })
     }
